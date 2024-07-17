@@ -1,3 +1,4 @@
+# Backtested in google collab by saudeep chattopadhyay
 import pandas as pd
 import yfinance as yf
 
