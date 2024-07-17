@@ -1,4 +1,6 @@
 # Backtested in google collab by saudeep chattopadhyay
+!pip install xlsxwriter
+!pip install yfinance
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -6,7 +8,7 @@ from datetime import datetime
 from scipy.stats import linregress
 from google.colab import files
 
-# List of Nifty 50 companies' stock symbols
+# list of Nifty 50 companies stock symbols
 nifty_50_symbols = [
     'ADANIPORTS.NS', 'ASIANPAINT.NS', 'AXISBANK.NS', 'BAJAJ-AUTO.NS', 'BAJFINANCE.NS', 'BAJAJFINSV.NS',
     'BPCL.NS', 'BHARTIARTL.NS', 'BRITANNIA.NS', 'CIPLA.NS', 'COALINDIA.NS', 'DIVISLAB.NS', 'DRREDDY.NS',
@@ -17,35 +19,35 @@ nifty_50_symbols = [
     'TITAN.NS', 'ULTRACEMCO.NS', 'UPL.NS', 'WIPRO.NS', 'ADANIENT.NS', 'APOLLOHOSP.NS', 'BAJAJHLDNG.NS'
 ]
 
-# Define the start and end dates
+# the start and end dates
 start_date = '2017-01-01'
 end_date = '2023-12-31'
 
-# Download data for each stock and store in the dictionary
+# downloading data for each stock and storing in the dictionary
 data = {symbol: yf.download(symbol, start=start_date, end=end_date, interval='1mo') for symbol in nifty_50_symbols}
 
-# Combine all dataframes into one
+# combining all dataframes into one
 all_data = pd.concat(data.values(), keys=data.keys(), names=['Stock', 'Date']).reset_index(level='Stock').reset_index()
 all_data = all_data[['Date', 'Stock', 'Adj Close']]
 all_data.rename(columns={'Adj Close': 'Price'}, inplace=True)
 
-# Save the combined data to a CSV file
+# saving the combined data to a CSV file
 all_data.to_csv('nifty_50_monthly_data_2017_2023.csv', index=False)
 
-# Load historical price data (adjusted for splits and dividends)
+# loading historical price data 
 prices_df = pd.read_csv('nifty_50_monthly_data_2017_2023.csv')
 
-# Function to calculate monthly returns
+# calculate monthly returns function
 def calculate_monthly_returns(prices_df):
     prices_df['Return'] = prices_df.groupby('Stock')['Price'].pct_change()
     return prices_df
 
-# Function to calculate cumulative return over the formation period
+# cumulative return over the formation period function
 def calculate_cumulative_return(prices_df, formation_period=12, skip_period=1):
     prices_df['Cum_Return'] = prices_df.groupby('Stock')['Return'].transform(lambda x: (x + 1).rolling(formation_period + skip_period).apply(lambda y: np.prod(y[:-skip_period]) - 1, raw=True))
     return prices_df
 
-# Rank stocks based on monthly return
+# Ranking of stocks based on monthly return
 def rank_stocks(prices_df, top_n=25, bottom_n=25):
     latest_date = prices_df['Date'].max()
     ranked_df = prices_df[prices_df['Date'] == latest_date].sort_values('Return', ascending=False)
@@ -53,7 +55,7 @@ def rank_stocks(prices_df, top_n=25, bottom_n=25):
     bottom_stocks = ranked_df.tail(bottom_n)
     return top_stocks, bottom_stocks
 
-# Calculate portfolio performance
+# portfolio performance function
 def calculate_portfolio_performance(top_stocks, bottom_stocks, prices_df):
     portfolio_stocks = pd.concat([top_stocks, bottom_stocks])
     portfolio_prices = prices_df[prices_df['Stock'].isin(portfolio_stocks['Stock'].values)]
@@ -62,9 +64,9 @@ def calculate_portfolio_performance(top_stocks, bottom_stocks, prices_df):
     portfolio_cumulative_returns = (1 + portfolio_returns).cumprod() - 1
     return portfolio_returns, portfolio_cumulative_returns
 
-# Function to calculate performance metrics
+# performance metrics function
 def calculate_performance_metrics(portfolio_returns):
-    risk_free_rate = 0.07 / 12  # Monthly risk-free rate (7 % approximately assumed for India)
+    risk_free_rate = 0.07 / 12  # Monthly risk-free rate
     excess_returns = portfolio_returns - risk_free_rate
 
     cagr = (1 + portfolio_returns.mean()) ** 12 - 1
@@ -77,40 +79,40 @@ def calculate_performance_metrics(portfolio_returns):
     
     return cagr, sharpe_ratio, sortino_ratio, alpha
 
-# Execute the strategy
+# executing the strategy
 prices_df = calculate_monthly_returns(prices_df)
 prices_df = calculate_cumulative_return(prices_df)
 top_stocks, bottom_stocks = rank_stocks(prices_df)
 portfolio_returns, portfolio_cumulative_returns = calculate_portfolio_performance(top_stocks, bottom_stocks, prices_df)
 cagr, sharpe_ratio, sortino_ratio, alpha = calculate_performance_metrics(portfolio_returns)
 
-# Save the results to Excel
+# saving the results to Excel
 with pd.ExcelWriter('/content/portfolio_performance.xlsx', engine='xlsxwriter') as writer:
     # Write portfolio stocks
     top_stocks.to_excel(writer, sheet_name='Top Stocks', index=False)
     bottom_stocks.to_excel(writer, sheet_name='Bottom Stocks', index=False)
 
-    # Write performance metrics
+    # performance metrics
     metrics_df = pd.DataFrame({
         'Metric': ['CAGR', 'Sharpe Ratio', 'Sortino Ratio', 'Alpha'],
         'Value': [cagr, sharpe_ratio, sortino_ratio, alpha]
     })
     metrics_df.to_excel(writer, sheet_name='Metrics', index=False)
 
-    # Write portfolio returns
+    # portfolio returns
     portfolio_returns.to_frame(name='Return').reset_index().to_excel(writer, sheet_name='Returns', index=False)
     portfolio_cumulative_returns.to_frame(name='Cumulative Return').reset_index().to_excel(writer, sheet_name='Cumulative Returns', index=False)
 
-    # Write trade sheet
+    # trade sheet
     trade_sheet_df = pd.concat([top_stocks[['Stock', 'Return']], bottom_stocks[['Stock', 'Return']]])
     trade_sheet_df.to_excel(writer, sheet_name='Trade Sheet', index=False)
 
-    # Write individual stocks data
+    # individual stocks data
     for stock in nifty_50_symbols:
         stock_data = prices_df[prices_df['Stock'] == stock]
         stock_data.to_excel(writer, sheet_name=stock.split('.')[0], index=False)
 
 print('Performance metrics saved to portfolio_performance.xlsx')
 
-# Download the file
+# file download
 files.download('/content/portfolio_performance.xlsx')
