@@ -1,3 +1,4 @@
+# Backtested in google collab by saudeep chattopadhyay
 !pip install yfinance xlsxwriter
 
 import yfinance as yf
