@@ -37,17 +37,17 @@ all_data.to_csv('nifty_50_monthly_data_2017_2023.csv', index=False)
 # loading historical price data 
 prices_df = pd.read_csv('nifty_50_monthly_data_2017_2023.csv')
 
-# calculate monthly returns function
+# calculating monthly returns 
 def calculate_monthly_returns(prices_df):
     prices_df['Return'] = prices_df.groupby('Stock')['Price'].pct_change()
     return prices_df
 
-# cumulative return over the formation period function
+# calculating cumulative return over the formation period 
 def calculate_cumulative_return(prices_df, formation_period=12, skip_period=1):
     prices_df['Cum_Return'] = prices_df.groupby('Stock')['Return'].transform(lambda x: (x + 1).rolling(formation_period + skip_period).apply(lambda y: np.prod(y[:-skip_period]) - 1, raw=True))
     return prices_df
 
-# Ranking of stocks based on monthly return
+# ranking of stocks based on monthly return
 def rank_stocks(prices_df, top_n=25, bottom_n=25):
     latest_date = prices_df['Date'].max()
     ranked_df = prices_df[prices_df['Date'] == latest_date].sort_values('Return', ascending=False)
