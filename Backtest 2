@@ -73,7 +73,7 @@ prices_df = calculate_drawdown(prices_df)
 prices_df = calculate_upside(prices_df)
 prices_df = calculate_monthly_volatility(prices_df)
 prices_df = calculate_risk_adjusted_mean_return(prices_df)
-# Rank stocks based on cumulative return and form portfolio
+# ranking stocks based on cumulative return and form portfolio
 def rank_stocks(prices_df, top_count=25):
     latest_date = prices_df['Date'].max()
     ranked_df = prices_df[prices_df['Date'] == latest_date].sort_values('Cum_Return', ascending=False)
