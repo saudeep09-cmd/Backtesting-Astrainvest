@@ -1,0 +1,136 @@
+import pandas as pd
+import yfinance as yf
+
+# list of Nifty 50 companies stock symbols
+nifty_50_symbols = [
+    'ADANIPORTS.NS', 'ASIANPAINT.NS', 'AXISBANK.NS', 'BAJAJ-AUTO.NS', 'BAJFINANCE.NS', 'BAJAJFINSV.NS',
+    'BPCL.NS', 'BHARTIARTL.NS', 'BRITANNIA.NS', 'CIPLA.NS', 'COALINDIA.NS', 'DIVISLAB.NS', 'DRREDDY.NS',
+    'EICHERMOT.NS', 'GRASIM.NS', 'HCLTECH.NS', 'HDFCBANK.NS', 'HDFCLIFE.NS', 'HEROMOTOCO.NS', 'HINDALCO.NS',
+    'HINDUNILVR.NS', 'ICICIBANK.NS', 'ITC.NS', 'INDUSINDBK.NS', 'INFY.NS', 'JSWSTEEL.NS', 'KOTAKBANK.NS',
+    'LT.NS', 'M&M.NS', 'MARUTI.NS', 'NESTLEIND.NS', 'NTPC.NS', 'ONGC.NS', 'POWERGRID.NS', 'RELIANCE.NS',
+    'SBIN.NS', 'SUNPHARMA.NS', 'TCS.NS', 'TATACONSUM.NS', 'TATAMOTORS.NS', 'TATASTEEL.NS', 'TECHM.NS',
+    'TITAN.NS', 'ULTRACEMCO.NS', 'UPL.NS', 'WIPRO.NS', 'ADANIENT.NS', 'APOLLOHOSP.NS', 'BAJAJHLDNG.NS'
+]
+
+# the start and end dates
+start_date = '2017-01-01'
+end_date = '2023-12-31'
+
+# downloading data for each stock
+data = {}
+for symbol in nifty_50_symbols:
+    stock_data = yf.download(symbol, start=start_date, end=end_date, interval='1mo')
+    stock_data['Stock'] = symbol
+    data[symbol] = stock_data.reset_index()
+
+# combining all dataframes into one
+all_data = pd.concat(data.values())
+all_data = all_data[['Date', 'Stock', 'Adj Close']]
+all_data.rename(columns={'Adj Close': 'Price'}, inplace=True)
+
+# saving the combined data to a CSV file
+all_data.to_csv('nifty_50_monthly_data_2017_2023.csv', index=False)
+
+# first rows of the dataframe
+print(all_data.head())
+import numpy as np
+
+# loading historical price data
+prices_df = pd.read_csv('nifty_50_monthly_data_2017_2023.csv')
+
+# calculating monthly returns
+prices_df['Return'] = prices_df.groupby('Stock')['Price'].pct_change()
+
+# calculating cumulative return over the formation period
+def calculate_cumulative_return(prices_df, formation_period=12, skip_period=1):
+    prices_df['Cum_Return'] = prices_df.groupby('Stock')['Return'].transform(lambda x: (x + 1).rolling(formation_period + skip_period).apply(lambda y: np.prod(y[:-skip_period]) - 1, raw=True))
+    return prices_df
+
+# calculating drawdown
+def calculate_drawdown(prices_df):
+    prices_df['Cumulative'] = prices_df.groupby('Stock')['Price'].cummax()
+    prices_df['Drawdown'] = prices_df['Price'] / prices_df['Cumulative'] - 1
+    return prices_df
+
+# calculating upside
+def calculate_upside(prices_df):
+    prices_df['Upside'] = prices_df.groupby('Stock')['Price'].transform(lambda x: x.rolling(window=12).apply(lambda y: (y[-1] / y[0]) - 1, raw=True))
+    return prices_df
+
+# calculating monthly volatility
+def calculate_monthly_volatility(prices_df):
+    prices_df['Monthly_Volatility'] = prices_df.groupby('Stock')['Return'].rolling(window=12).std().reset_index(level=0, drop=True)
+    return prices_df
+
+# calculating risk-adjusted mean return
+def calculate_risk_adjusted_mean_return(prices_df):
+    prices_df['Risk_Adjusted_Mean_Return'] = prices_df['Return'] / prices_df['Monthly_Volatility']
+    return prices_df
+
+prices_df = calculate_cumulative_return(prices_df)
+prices_df = calculate_drawdown(prices_df)
+prices_df = calculate_upside(prices_df)
+prices_df = calculate_monthly_volatility(prices_df)
+prices_df = calculate_risk_adjusted_mean_return(prices_df)
+# Rank stocks based on cumulative return and form portfolio
+def rank_stocks(prices_df, top_count=25):
+    latest_date = prices_df['Date'].max()
+    ranked_df = prices_df[prices_df['Date'] == latest_date].sort_values('Cum_Return', ascending=False)
+    top_stocks = ranked_df.head(top_count)['Stock'].tolist()
+    bottom_stocks = ranked_df.tail(top_count)['Stock'].tolist()
+    return top_stocks, bottom_stocks
+
+top_stocks, bottom_stocks = rank_stocks(prices_df)
+
+# calculate portfolio performance function
+def calculate_portfolio_performance(prices_df, top_stocks, bottom_stocks):
+    portfolio = prices_df[prices_df['Stock'].isin(top_stocks + bottom_stocks)].copy()
+    portfolio['Position'] = portfolio['Stock'].apply(lambda x: 1 if x in top_stocks else -1)
+    portfolio['Weighted_Return'] = portfolio['Return'] * portfolio['Position']
+    portfolio['Portfolio_Return'] = portfolio.groupby('Date')['Weighted_Return'].sum().reset_index(drop=True)
+    portfolio = portfolio.dropna(subset=['Portfolio_Return'])
+    return portfolio
+
+portfolio = calculate_portfolio_performance(prices_df, top_stocks, bottom_stocks)
+
+# calculating additional performance metrics
+def calculate_performance_metrics(portfolio):
+    portfolio['Cumulative_Return'] = (1 + portfolio['Portfolio_Return']).cumprod() - 1
+    portfolio['Drawdown'] = portfolio['Cumulative_Return'] - portfolio['Cumulative_Return'].cummax()
+    portfolio['Upside'] = portfolio['Cumulative_Return'].cummax()
+    portfolio['Monthly_Volatility'] = portfolio['Portfolio_Return'].rolling(window=12).std()
+    portfolio['Sharpe_Ratio'] = portfolio['Portfolio_Return'].mean() / portfolio['Monthly_Volatility']
+    portfolio['Sharpe_Ratio'] = portfolio['Sharpe_Ratio'].apply(lambda x: max(x, 0))  # Ensure Sharpe Ratio is non-negative
+    portfolio['Sortino_Ratio'] = portfolio['Portfolio_Return'].mean() / portfolio['Portfolio_Return'][portfolio['Portfolio_Return'] < 0].std()
+    return portfolio
+
+portfolio = calculate_performance_metrics(portfolio)
+!pip install xlsxwriter
+import xlsxwriter
+
+# saving the results to Excel
+writer = pd.ExcelWriter('portfolio_performance.xlsx', engine='xlsxwriter')
+
+# portfolio sheet
+portfolio.to_excel(writer, sheet_name='Portfolio', index=False)
+
+# trade details sheet
+trade_sheet = []
+for stock in top_stocks + bottom_stocks:
+    stock_df = prices_df[prices_df['Stock'] == stock].copy()
+    stock_df['Buy_Sell'] = stock_df['Stock'].apply(lambda x: 'Buy' if x in top_stocks else 'Sell')
+    stock_df = stock_df[['Date', 'Stock', 'Price', 'Return', 'Buy_Sell']]
+    trade_sheet.append(stock_df)
+    stock_df.to_excel(writer, sheet_name=stock, index=False)
+
+# saving the trade sheet
+trade_sheet_df = pd.concat(trade_sheet)
+trade_sheet_df.to_excel(writer, sheet_name='Trade_Details', index=False)
+
+# saving the workbook
+writer.close()
+
+print('Performance metrics and trade details saved to portfolio_performance.xlsx')
+from google.colab import files
+
+files.download('portfolio_performance.xlsx')
