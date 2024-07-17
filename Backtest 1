@@ -55,7 +55,7 @@ def rank_stocks(prices_df, top_n=25, bottom_n=25):
     bottom_stocks = ranked_df.tail(bottom_n)
     return top_stocks, bottom_stocks
 
-# portfolio performance function
+# portfolio performance
 def calculate_portfolio_performance(top_stocks, bottom_stocks, prices_df):
     portfolio_stocks = pd.concat([top_stocks, bottom_stocks])
     portfolio_prices = prices_df[prices_df['Stock'].isin(portfolio_stocks['Stock'].values)]
@@ -64,7 +64,7 @@ def calculate_portfolio_performance(top_stocks, bottom_stocks, prices_df):
     portfolio_cumulative_returns = (1 + portfolio_returns).cumprod() - 1
     return portfolio_returns, portfolio_cumulative_returns
 
-# performance metrics function
+# performance metrics 
 def calculate_performance_metrics(portfolio_returns):
     risk_free_rate = 0.07 / 12  # Monthly risk-free rate
     excess_returns = portfolio_returns - risk_free_rate
