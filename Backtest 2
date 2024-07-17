@@ -83,7 +83,7 @@ def rank_stocks(prices_df, top_count=25):
 
 top_stocks, bottom_stocks = rank_stocks(prices_df)
 
-# calculate portfolio performance function
+# calculating portfolio performance function
 def calculate_portfolio_performance(prices_df, top_stocks, bottom_stocks):
     portfolio = prices_df[prices_df['Stock'].isin(top_stocks + bottom_stocks)].copy()
     portfolio['Position'] = portfolio['Stock'].apply(lambda x: 1 if x in top_stocks else -1)
