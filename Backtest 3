@@ -1,0 +1,104 @@
+!pip install yfinance xlsxwriter
+
+import yfinance as yf
+import numpy as np
+import pandas as pd
+
+# download Nifty 50 stock tickers
+stocks = pd.read_html('http://en.wikipedia.org/wiki/NIFTY_50')[2].Symbol
+stocks = stocks + '.NS'
+stocks = stocks.tolist()
+
+# downloading data for Nifty 50 stocks
+df = yf.download(stocks, start='2018-01-01')['Close']
+
+# calculating daily returns
+ret_df = df.pct_change()
+
+# calculating monthly returns
+mlt_ret = (ret_df + 1).resample('M').prod()
+
+# calculating 12-month rolling returns
+mlt_12 = mlt_ret.rolling(12).apply(np.prod).dropna()
+
+# top performers
+def top_performers(date):
+    all = mlt_12.loc[date]
+    top = all.nlargest(5)
+    relevant_ret = mlt_ret[top.name:][1:2][top.index]
+    return (relevant_ret).mean(axis=1).values[0]
+
+# calculating momentum returns
+mom_ret = []
+for date in mlt_12.index[:-1]:
+    mom_ret.append(top_performers(date))
+
+# converting momentum returns to a Series
+momentum_returns = pd.Series(mom_ret, index=mlt_12.index[:-1])
+
+# cownloading Nifty index data
+nifty = yf.download('^NSEI', start='2018-01-01')['Close']
+
+# calculating Nifty index returns
+nifty_returns = (nifty.pct_change() + 1).resample('M').prod().dropna()
+
+# calculating profit and loss, max drawdown, and max upside
+def calculate_metrics(ret_series):
+    cum_returns = (ret_series + 1).cumprod()
+    drawdown = cum_returns / cum_returns.cummax() - 1
+    max_drawdown = drawdown.min()
+    max_upside = cum_returns.max()
+    pnl = cum_returns.iloc[-1] - 1
+    return pnl, max_drawdown, max_upside
+
+# creating a portfolio and saving results
+def create_portfolio_and_save_to_excel():
+    with pd.ExcelWriter('portfolio_performance.xlsx', engine='xlsxwriter', datetime_format='yyyy-mm-dd') as writer:
+        # saving individual stocks data
+        df.to_excel(writer, sheet_name='Stocks')
+        
+        # saving momentum returns
+        momentum_returns.to_excel(writer, sheet_name='Momentum Returns')
+        
+        # saving Nifty index returns
+        nifty_returns.to_excel(writer, sheet_name='Nifty Returns')
+        
+        # saving top performers for each month
+        top_performers_df = pd.DataFrame(index=mlt_12.index[:-1], columns=['Top Performers'])
+        for date in mlt_12.index[:-1]:
+            all = mlt_12.loc[date]
+            top = all.nlargest(5)
+            top_performers_df.loc[date, 'Top Performers'] = ', '.join(top.index)
+        top_performers_df.to_excel(writer, sheet_name='Top Performers')
+        
+        # calculating and saving additional metrics
+        metrics_df = pd.DataFrame(index=mlt_12.index[:-1], columns=['PnL', 'Max Drawdown', 'Max Upside'])
+        for date in mlt_12.index[:-1]:
+            pnl, max_drawdown, max_upside = calculate_metrics(momentum_returns)
+            metrics_df.loc[date] = [pnl, max_drawdown, max_upside]
+        metrics_df.to_excel(writer, sheet_name='Metrics')
+        
+        # sheets for each stock
+        for stock in stocks:
+            stock_df = ret_df[[stock]].dropna()
+            stock_df['PnL'], stock_df['Max Drawdown'], stock_df['Max Upside'] = zip(*stock_df.apply(calculate_metrics, axis=1))
+            stock_df.to_excel(writer, sheet_name=stock)
+        
+        # trades sheet
+        trades = pd.DataFrame(columns=['Date', 'Stock', 'Action', 'Price'])
+        for stock in stocks:
+            stock_prices = df[stock].dropna()
+            for i in range(1, len(stock_prices)):
+                if stock_prices[i] > stock_prices[i-1]:
+                    trades = pd.concat([trades, pd.DataFrame({'Date': [stock_prices.index[i]], 'Stock': [stock], 'Action': ['Buy'], 'Price': [stock_prices[i]]})], ignore_index=True)
+                elif stock_prices[i] < stock_prices[i-1]:
+                    trades = pd.concat([trades, pd.DataFrame({'Date': [stock_prices.index[i]], 'Stock': [stock], 'Action': ['Sell'], 'Price': [stock_prices[i]]})], ignore_index=True)
+        
+        trades.to_excel(writer, sheet_name='Trades')
+
+# creating portfolio and save to Excel
+create_portfolio_and_save_to_excel()
+
+# downloading the file
+from google.colab import files
+files.download('portfolio_performance.xlsx')
